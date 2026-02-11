@@ -1,0 +1,547 @@
+<!--
+KidsDaily — Single-file interactive kids' newspaper (index.html)
+
+How this delivery works:
+- This single HTML file is a complete static front-end you can drop on an IIS site root.
+- It expects a folder structure (explained below) but has a fallback embedded sample so it works immediately for preview.
+
+Files you should create on your IIS site (recommended):
+/ (site root)
+  index.html   <-- this file (drop here)
+  /posts/
+    index.json <-- index of posts (array of post metadata)
+    <slug>.json <-- individual post files referenced by index.json
+  /images/
+    ...       <-- your post images (optional if you embed images in post JSON)
+
+Example posts/index.json (schema):
+[
+  {
+    "slug": "sample-story",
+    "title": "A Very Sunny Day",
+    "date": "2025-10-05",
+    "author": "Dad",
+    "cover": "images/sunny-cover.jpg",
+    "excerpt": "Sophie and Emily discover a glowing window...",
+    "filename": "sample-story.json"
+  }
+]
+
+Example posts/sample-story.json (schema):
+{
+  "slug": "sample-story",
+  "title": "A Very Sunny Day",
+  "date": "2025-10-05",
+  "author": "Dad",
+  "cover": "images/sunny-cover.jpg",
+  "tags": ["adventure", "kids"],
+  "excerpt": "Sophie and Emily discover a glowing window...",
+  "content": "<p>Once upon a time...</p><p><img src=\"images/sunny1.jpg\" alt=\"garden\"></p>"
+}
+
+Deployment tips for IIS:
+- Make sure .json is served with MIME type application/json (IIS typically already does this).
+- Place index.html at your site root and create the /posts and /images folders as shown above.
+- To keep the editor private: the built-in editor in this single-file site is client-side only (no server authentication). For real security, restrict access to the /index.html?editor or protect the folder with IIS basic auth or IP restrictions.
+- If you want the admin to upload posts directly to the server, enable WebDAV on IIS (advanced) or ask me and I can add a WebDAV uploader sample.
+
+-->
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>The Tiny Times — Kids Daily Newspaper</title>
+  <meta name="description" content="A playful, kid-friendly daily newspaper you host on your IIS server. Add posts via simple JSON files.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;700&family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+  <!-- Link to CSS -->
+  <link rel="stylesheet" href="style.css">
+  <style>
+    :root{
+      --bg:#fff8f3;
+      --card:#ffffff;
+      --accent1:#FF8A65;
+      --accent2:#FFD166;
+      --muted:#6b6b6b;
+      --glass: rgba(255,255,255,0.7);
+      --radius:18px;
+      font-family: 'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+      color:#222;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      background: radial-gradient(circle at 10% 10%, #FFF7E8 0%, var(--bg) 35%, #F0FBFF 100%);
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+      overflow-y:scroll;
+    }
+    .wrap{max-width:1100px;margin:28px auto;padding:20px}
+
+    /* header */
+    header{display:flex;align-items:center;gap:16px}
+    .logo{display:flex;align-items:center;gap:12px}
+    .mast{background:linear-gradient(90deg,var(--accent1),var(--accent2));padding:12px 18px;border-radius:16px;color:white;box-shadow:0 6px 18px rgba(0,0,0,0.08)}
+    .mast h1{margin:0;font-family:'Fredoka';font-size:20px;letter-spacing:0.5px}
+    .tagline{font-size:12px;opacity:0.95}
+
+    .top-actions{margin-left:auto;display:flex;gap:8px}
+    .btn{background:var(--card);border:none;padding:8px 12px;border-radius:12px;cursor:pointer;box-shadow:0 6px 18px rgba(12,12,12,0.06);font-weight:600}
+    .btn-icon{display:inline-flex;align-items:center;gap:8px}
+
+    /* hero */
+    .hero{display:grid;grid-template-columns:1fr 360px;gap:16px;margin-top:18px}
+    .hero-card{background:linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.75));border-radius:20px;padding:20px;box-shadow:0 14px 30px rgba(39,39,39,0.06)}
+    .lead-title{font-family:'Fredoka';font-size:28px;margin:0}
+    .lead-by{font-size:13px;color:var(--muted);margin-top:6px}
+    .lead-cover{width:100%;height:220px;border-radius:12px;object-fit:cover;margin-top:12px}
+
+    /* grid */
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;margin-top:18px}
+    .card{background:var(--card);border-radius:16px;padding:12px;overflow:hidden;position:relative;border:1px solid rgba(0,0,0,0.03)}
+    .imgwrap{height:120px;border-radius:10px;overflow:hidden}
+    .imgwrap img{width:100%;height:100%;object-fit:cover;display:block}
+    .card h3{margin:10px 0 6px;font-size:16px}
+    .meta{font-size:12px;color:var(--muted)}
+
+    /* modal */
+    .overlay{position:fixed;inset:0;background:linear-gradient(180deg, rgba(5,5,10,0.4), rgba(5,5,10,0.6));display:none;align-items:center;justify-content:center;z-index:100}
+    .panel{width:min(1000px,94%);max-height:92vh;background:linear-gradient(180deg,#fff,#fffefc);border-radius:18px;padding:18px;overflow:auto;box-shadow:0 30px 80px rgba(5,10,20,0.4)}
+    .panel .close{float:right}
+    .panel h2{font-family:'Fredoka'}
+    .panel .content img{max-width:100%;border-radius:12px}
+
+    /* search */
+    .searchbar{display:flex;gap:8px;align-items:center}
+    .searchbar input{flex:1;padding:10px 14px;border-radius:12px;border:1px solid rgba(0,0,0,0.06);font-size:14px}
+
+    /* playful shapes */
+    .decor{position:absolute;pointer-events:none;opacity:0.12}
+
+    /* editor */
+    .editor-toolbar{display:flex;gap:8px;align-items:center;margin-top:10px}
+    .editor{display:none;position:fixed;right:18px;bottom:18px;width:420px;background:var(--card);border-radius:14px;padding:12px;box-shadow:0 20px 60px rgba(0,0,0,0.12);z-index:200}
+    .editor input,.editor textarea{width:100%;padding:8px;border-radius:8px;border:1px solid rgba(0,0,0,0.06);margin-bottom:8px}
+    .editor .content-edit{min-height:160px;border:1px dashed rgba(0,0,0,0.06);padding:10px;border-radius:10px;overflow:auto;background:var(--glass)}
+    .small{font-size:12px;color:var(--muted)}
+
+    footer{margin-top:28px;text-align:center;color:var(--muted);font-size:13px}
+
+    @media(max-width:900px){
+      .hero{grid-template-columns:1fr}
+      .top-actions{display:none}
+      .editor{width:calc(100% - 36px);left:18px;right:18px}
+    }
+
+    /* little animations */
+    .floaty{animation:floaty 6s ease-in-out infinite}
+    @keyframes floaty{0%{transform:translateY(0)}50%{transform:translateY(-8px)}100%{transform:translateY(0)}}
+
+    .card:hover{transform:translateY(-6px);transition:transform .18s}
+    .card:hover {
+      cursor: pointer;
+    }
+    .confetti{position:fixed;left:0;right:0;top:0;bottom:0;pointer-events:none;z-index:9999}
+
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo">
+        <div class="mast">
+          <h1>The Tiny Times</h1>
+          <div class="tagline">Daily news for Sophie & Emily — bright, short & fun</div>
+        </div>
+      </div>
+
+      <div class="top-actions">
+        <div class="searchbar">
+          <input id="searchInput" placeholder="Search stories, tags or author...">
+        </div>
+        <button class="btn" id="editorToggle" title="Open author editor">✏️ Author</button>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="hero-card" id="leadCard">
+        <h2 class="lead-title" id="leadTitle">Welcome to The Tiny Times</h2>
+        <div class="lead-by" id="leadMeta">Short, bright stories for kids — read aloud available</div>
+        <p id="leadExcerpt" style="margin-top:10px;color:var(--muted)"></p>
+      </div>
+
+      <aside class="hero-card" style="position:relative;overflow:visible;">
+        <div style="display:flex;flex-direction:column;gap:12px;align-items:stretch">
+          <div style="background:linear-gradient(180deg,#fff,#fff9f0);padding:10px;border-radius:12px">
+            <div style="font-weight:700">Weekly Quote</div>
+            <div id="quoteText" class="small" style="margin-top:6px"></div>
+          </div>
+
+          <div style="background:linear-gradient(90deg,#fff,#f7fff8);padding:10px;border-radius:12px">
+            <div style="font-weight:700">Quick Fun</div>
+            <div class="small">Tap a story and press 🔊 to hear it read aloud.</div>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <main>
+      <div class="grid" id="postsGrid">
+        <!-- cards go here -->
+      </div>
+    </main>
+
+    <footer>
+      Built for families — host on your own server. Editor included for manual post export.
+    </footer>
+  </div>
+
+  <!-- article overlay -->
+  <div class="overlay" id="overlay">
+    <div class="panel" role="dialog" aria-modal="true">
+      <button class="btn close" id="closeOverlay">✖</button>
+      <h2 id="articleTitle">Title</h2>
+      <div class="small" id="articleMeta">By ...</div>
+      <hr>
+      <div class="content" id="articleContent"></div>
+      <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" id="playTTS">🔊 Read Aloud</button>
+        <button class="btn" id="downloadPost">💾 Download Post</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- editor -->
+  <div class="editor" id="editor">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <strong>Author editor</strong>
+      <button class="btn" id="closeEditor">Close</button>
+    </div>
+    <input id="postTitle" placeholder="Title (required)">
+    <input id="postAuthor" placeholder="Author (e.g. Dad)">
+    <input id="postDate" placeholder="Date (YYYY-MM-DD) - default today">
+    <input id="postTags" placeholder="Tags (comma separated)">
+    <input id="postCover" placeholder="Cover image filename (e.g. images/cover.jpg) or leave for upload">
+    <label class="small">Content (you can paste HTML, or write and insert images):</label>
+    <div class="content-edit" id="contentEdit" contenteditable="true">&lt;p&gt;Write your story here...&lt;/p&gt;</div>
+    <div class="editor-toolbar">
+      <input type="file" id="imageUpload" accept="image/*">
+      <button class="btn" id="insertImgBtn">Insert Image</button>
+      <button class="btn" id="previewBtn">Preview</button>
+      <button class="btn" id="exportZip">Export ZIP</button>
+    </div>
+    <div class="small" style="margin-top:8px">Export ZIP creates a package containing the post JSON and any uploaded images. Upload the ZIP contents to your IIS /posts and /images folders and update posts/index.json.</div>
+  </div>
+  <div id="confetti" class="confetti"></div>
+
+  <!-- external libs for export (optional) -->
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.0/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+
+  <script>
+    // --- FALLBACK SAMPLE POSTS (used if no posts/index.json available) ---
+    const SAMPLE_INDEX = [
+      {slug:'sample-story',title:'A Very Sunny Day',date:'2025-10-05',author:'Dad',cover:'',excerpt:'Sophie and Emily discover a glowing window...',filename:'sample-story.json',tags:['adventure']},
+      {slug:'garden-treasures',title:'Garden Treasures',date:'2025-10-04',author:'Sophie',cover:'',excerpt:'A small treasure hunt in the garden',filename:'garden-treasures.json',tags:['family','fun']}
+    ];
+
+    const SAMPLE_POSTS = {
+      'sample-story':{
+        slug:'sample-story',title:'A Very Sunny Day',date:'2025-10-05',author:'Dad',cover:'',tags:['adventure'],excerpt:'Sophie and Emily discover a glowing window...',
+        content:'<p>One afternoon Sophie and Emily saw a ray of light coming through the window. The light shimmered and a soft chime rang. When they touched it — whoosh — they felt like they were falling into the game!</p><p><img src="https://images.unsplash.com/photo-1503264116251-35a269479413?w=1200&q=80" alt="light"></p>'
+      },
+      'garden-treasures':{
+        slug:'garden-treasures',title:'Garden Treasures',date:'2025-10-04',author:'Sophie',cover:'',tags:['family','fun'],excerpt:'A small treasure hunt in the garden',
+        content:'<p>We hid little stones and a map. Mum helped us dig near the rosemary bush. We found an old tin with stickers inside!</p>'
+      }
+    };
+
+    // --- App state ---
+    let POSTS_INDEX = [];
+    let POSTS_CACHE = {}; // slug -> post object
+
+    const postsGrid = document.getElementById('postsGrid');
+    const leadTitle = document.getElementById('leadTitle');
+    const leadMeta = document.getElementById('leadMeta');
+    const leadCover = document.getElementById('leadCover');
+    const leadExcerpt = document.getElementById('leadExcerpt');
+
+    // fetch index from server
+    async function loadIndex() {
+      try {
+        const res = await fetch('posts/index.json');
+        if (!res.ok) throw new Error(`Failed to load index.json: ${res.status}`);
+
+        let data;
+        try {
+          data = await res.json();
+        } catch (e) {
+          const txt = await res.text();
+          console.warn('index.json was not valid JSON, attempting to repair...', txt);
+          data = JSON.parse(txt.replace(/^\uFEFF/, '')); // strip BOM
+        }
+
+        const list = Array.isArray(data.posts) ? data.posts : [];
+        console.log('Loaded posts list:', list);
+        renderGrid(list);
+      } catch (err) {
+        console.error('Error loading posts index:', err);
+      }
+    }
+
+    async function loadLead(meta){
+      leadTitle.textContent = meta.title;
+      leadMeta.textContent = `${meta.author || 'Unknown'} — ${meta.date || ''}`;
+      leadExcerpt.textContent = meta.excerpt || '';
+      if(meta.cover){
+        leadCover.src = meta.cover;
+        leadCover.style.display='block';
+      }else{
+        leadCover.src = 'https://images.unsplash.com/photo-1503264116251-35a269479413?w=1200&q=80';
+      }
+    }
+
+    async function renderGrid(list) {
+      postsGrid.innerHTML = '';
+
+      for (const filename of list) {
+        try {
+          const res = await fetch(`posts/${filename}`);
+          const meta = await res.json();
+
+          const card = document.createElement('article');
+          card.className = 'card';
+          card.tabIndex = 0;
+
+          const imgwrap = document.createElement('div');
+          imgwrap.className = 'imgwrap';
+
+          const img = document.createElement('img');
+          img.src = meta.cover; // now we have the actual cover
+          img.alt = meta.title;
+          imgwrap.appendChild(img);
+
+          const h = document.createElement('h3'); h.textContent = meta.title;
+          const m = document.createElement('div'); m.className = 'meta';
+          m.textContent = `${meta.author || ''} • ${meta.date || ''}`;
+          const p = document.createElement('p'); p.className = 'small';
+          p.textContent = meta.excerpt || '';
+
+          card.appendChild(imgwrap);
+          card.appendChild(h);
+          card.appendChild(m);
+          card.appendChild(p);
+
+          card.addEventListener('click', () => openPostModal(meta));
+          postsGrid.appendChild(card);
+
+        } catch (err) {
+          console.error('Failed to load post:', filename, err);
+        }
+      }
+    }
+
+
+    function openPostModal(post) {
+      currentOpenPost = post; // so download works
+      document.getElementById('articleTitle').textContent = post.title || '';
+      document.getElementById('articleMeta').textContent = `${post.author || ''} • ${post.date || ''}`;
+      document.getElementById('articleContent').innerHTML = post.content || '';
+      document.getElementById('overlay').style.display = 'flex';
+    }
+
+
+    document.getElementById('closeOverlay').addEventListener('click', ()=>{
+      document.getElementById('overlay').style.display='none';
+      stopTTS();
+    });
+
+    // optional: close on clicking outside panel
+    document.getElementById('overlay').addEventListener('click', e => {
+      if(e.target === document.getElementById('overlay')){
+        document.getElementById('overlay').style.display='none';
+        stopTTS();
+      }
+    });
+
+    // search
+    document.getElementById('searchInput').addEventListener('input', e=>{
+      const q = e.target.value.trim().toLowerCase();
+      if(!q) return renderGrid(POSTS_INDEX);
+      const filtered = POSTS_INDEX.filter(p=>{
+        return (p.title && p.title.toLowerCase().includes(q)) || (p.excerpt && p.excerpt.toLowerCase().includes(q)) || (p.author && p.author.toLowerCase().includes(q)) || (p.tags && p.tags.join(' ').toLowerCase().includes(q));
+      });
+      renderGrid(filtered);
+    });
+
+    // reading (TTS)
+    let ttsUtter = null;
+    function playTTSFor(elem){
+      const text = elem.textContent || elem.innerText || '';
+      if(!('speechSynthesis' in window)){
+        alert('Text-to-speech is not supported in this browser.');
+        return;
+      }
+      stopTTS();
+      ttsUtter = new SpeechSynthesisUtterance(text);
+      ttsUtter.rate = 0.95;
+      speechSynthesis.speak(ttsUtter);
+    }
+    function stopTTS(){ if(ttsUtter) speechSynthesis.cancel(); }
+
+    document.getElementById('playTTS').addEventListener('click', ()=>{
+      const content = document.getElementById('articleContent');
+      playTTSFor(content);
+    });
+
+    // download post as JSON
+    let currentOpenPost = null;
+    document.getElementById('downloadPost').addEventListener('click', ()=>{
+      if(!currentOpenPost) return;
+      const blob = new Blob([JSON.stringify(currentOpenPost, null, 2)], {type:'application/json'});
+      const filename = (currentOpenPost.slug || 'post') + '.json';
+      if(window.saveAs) saveAs(blob, filename);
+      else{
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+      }
+    });
+
+    // confetti (simple)
+    function popConfetti(){
+      const conf = document.getElementById('confetti');
+      conf.innerHTML='';
+      for(let i=0;i<18;i++){
+        const el = document.createElement('div');
+        el.style.position='absolute';
+        el.style.left=(20+Math.random()*60)+'%';
+        el.style.top=(10+Math.random()*60)+'%';
+        el.style.width='10px';el.style.height='14px';
+        el.style.background = i%3? 'var(--accent1)':'var(--accent2)';
+        el.style.opacity=0.95;el.style.transform=`rotate(${Math.random()*360}deg)`;
+        el.style.borderRadius='3px';
+        el.style.transition='transform 1.2s ease-out, opacity 1.2s ease-out, top 1.2s ease-out';
+        conf.appendChild(el);
+        requestAnimationFrame(()=>{
+          el.style.top = (Math.random()*70+20)+'%';
+          el.style.transform = `translateY(180px) rotate(${Math.random()*600}deg)`;
+          el.style.opacity = 0;
+        });
+      }
+      setTimeout(()=>conf.innerHTML='',1400);
+    }
+
+    // --- Editor ---
+    const editor = document.getElementById('editor');
+    const editorToggle = document.getElementById('editorToggle');
+    const closeEditor = document.getElementById('closeEditor');
+    const contentEdit = document.getElementById('contentEdit');
+    const imageUpload = document.getElementById('imageUpload');
+    let uploadedImages = []; // {name, file}
+
+    editorToggle.addEventListener('click', ()=>{
+      // simple passphrase protector
+      const p = prompt('Author access passphrase (default: tiny-times):');
+      if(p===null) return; // cancel
+      if(p.trim().toLowerCase() === 'tiny-times'){
+        editor.style.display='block';
+      }else{
+        alert('Wrong passphrase. To disable this prompt change code in index.html');
+      }
+    });
+    closeEditor.addEventListener('click', ()=>{ editor.style.display='none'; });
+
+    document.getElementById('insertImgBtn').addEventListener('click', ()=>{
+      if(!imageUpload.files.length){ alert('Choose an image file first.'); return; }
+      const f = imageUpload.files[0];
+      const name = prompt('Filename to save on server (e.g. images/'+f.name+'): ', 'images/' + f.name);
+      if(!name) return;
+      // record it for packaging
+      uploadedImages.push({name, file:f});
+      // insert an <img> tag into editor
+      const imgTag = `<img src="${name}" alt="${f.name}" style="max-width:100%;border-radius:8px">`;
+      document.execCommand('insertHTML', false, imgTag);
+      imageUpload.value='';
+    });
+
+    document.getElementById('previewBtn').addEventListener('click', ()=>{
+      const title = document.getElementById('postTitle').value || 'Preview Title';
+      const author = document.getElementById('postAuthor').value || 'Author';
+      const date = document.getElementById('postDate').value || new Date().toISOString().slice(0,10);
+      const content = contentEdit.innerHTML;
+      const preview = {title,author,date,content};
+      openPostModal({slug:'__preview',title:preview.title,date:preview.date,author:preview.author,excerpt:'(preview)',filename:''});
+      POSTS_CACHE['__preview'] = {slug:'__preview',title:preview.title,date:preview.date,author:preview.author,content:preview.content};
+    });
+
+    document.getElementById('exportZip').addEventListener('click', async ()=>{
+      const title = document.getElementById('postTitle').value.trim();
+      if(!title){alert('Please enter title');return}
+      const author = document.getElementById('postAuthor').value.trim() || 'Unknown';
+      const date = document.getElementById('postDate').value.trim() || new Date().toISOString().slice(0,10);
+      const tags = (document.getElementById('postTags').value || '').split(',').map(s=>s.trim()).filter(Boolean);
+      const cover = document.getElementById('postCover').value.trim();
+      const content = contentEdit.innerHTML;
+      const slug = slugify(title);
+      const filename = slug + '.json';
+      const postObj = {slug,title,author,date,tags,cover,excerpt:createExcerpt(content),content};
+
+      // build zip
+      const zip = new JSZip();
+      zip.file('posts/' + filename, JSON.stringify(postObj, null, 2));
+      // add uploaded images
+      for(const u of uploadedImages){
+        const data = await fileToArrayBuffer(u.file);
+        zip.file(u.name, data);
+      }
+      // add a small helper README and sample index snippet
+      zip.file('README.txt', `Drop the files in the ZIP to your IIS site.\n- posts/${filename} goes into /posts\n- any images go into /images or the paths you used.\nThen update /posts/index.json to reference the post metadata (see example).`);
+
+      const blob = await zip.generateAsync({type:'blob'});
+      saveAs(blob, slug + '-tiny-times.zip');
+      alert('ZIP generated. Upload the ZIP contents to your server (/posts and /images). Then update posts/index.json to list the new post.');
+    });
+
+    function slugify(s){ return s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,''); }
+    function createExcerpt(html){ const txt = (new DOMParser()).parseFromString(html,'text/html').body.textContent || ''; return txt.slice(0,150) + (txt.length>150?'...':''); }
+    function fileToArrayBuffer(file){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result); r.onerror=rej; r.readAsArrayBuffer(file); }); }
+
+    // download helper polyfill in case FileSaver is missing
+    function saveAs(blob, name){ if(window.saveAs){ window.saveAs(blob,name); } else { const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); a.remove(); } }
+
+    // small helper to show the weekly quote
+    function setWeeklyQuote(){
+        // Wait until the DOM is ready
+        document.addEventListener('DOMContentLoaded', () => {
+          const quotes = [
+            "Aim for the sky and you'll reach the ceiling. Aim for the ceiling and you'll stay on the floor. — Bill Shankly, Former Liverpool Manager"
+          ];
+
+          const quoteEl = document.getElementById('quoteText');
+          if(!quoteEl) return;
+
+          const d = new Date();
+          const idx = (d.getFullYear() + d.getMonth() + d.getDate()) % quotes.length;
+          quoteEl.textContent = quotes[idx];
+        });
+    }
+    // Wait for DOM
+    window.addEventListener('DOMContentLoaded', setWeeklyQuote);
+
+    // init
+    setWeeklyQuote();
+    loadIndex();
+
+    // expose for console debugging
+    window._KidsDaily = { loadIndex, POSTS_INDEX };
+
+
+  </script>
+</body>
+</html>

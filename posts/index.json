@@ -2,6 +2,7 @@
     "posts": [
         "birthdays_february.json",
         "february_weather.json",
-        "february_music.json"
+        "february_music.json",
+        "fun_facts.json"
     ]
 }

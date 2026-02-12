@@ -1,11 +1,5 @@
 [
-    {
-        "slug": "birthdays_february",
-        "title": "Famous People Born in February",
-        "date": "2026-02-12",
-        "author": "Admin",
-        "cover": "images/february-cover.jpg",
-        "excerpt": "Meet some amazing people born in February who changed the world with science, courage, and sports!",
-        "filename": "birthdays_february.json"
-    }
+    "posts": [
+        "birthdays_february.json"
+    ]
 ]

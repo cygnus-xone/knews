@@ -11,6 +11,7 @@
 	"sugar.json",
 	"automation_and_ai.json",
 	"the_dollar.json",
-	"currency.json"
+	"currency.json",
+	"iot_intro.json"
     ]
 }

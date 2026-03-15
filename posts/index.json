@@ -1,8 +1,5 @@
 {
     "posts": [
-        "birthdays_february.json",
-        "february_weather.json",
-        "february_music.json",
         "fun_facts.json",
         "knights_st_john.json",
 	"weetabix.json",
@@ -13,6 +10,7 @@
 	"aircraft_carrier.json",
 	"sugar.json",
 	"automation_and_ai.json",
-	"the_dollar.json"
+	"the_dollar.json",
+	"currency.json"
     ]
 }

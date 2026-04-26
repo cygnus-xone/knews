@@ -31,6 +31,7 @@
 	"oil.json",
 	"it_roles.json",
 	"computer_types.json",
-	"wearables.json"
+	"wearables.json",
+	"3d_printer.json"
     ]
 }
